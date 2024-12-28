@@ -19,8 +19,6 @@ from AudioMl4 import process_data_and_train, predict_user
 from sentiment_analysis import combined_sentiment_analysis
 
 
-
-
 class AudioRecorder:
     def __init__(self, root):
         self.root = root

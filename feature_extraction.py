@@ -2,12 +2,13 @@ import os
 import numpy as np
 import pandas as pd
 import librosa
-from sklearn.feature_selection import mutual_info_classif
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.feature_selection import RFE
 
 def extract_features(folder_path, output_csv, num_features=10):
     """
     Özellikleri çıkarır, seçer ve sonuçları CSV dosyasına kaydeder.
-    
+
     Args:
         folder_path (str): Ses dosyalarının bulunduğu klasör.
         output_csv (str): Özelliklerin kaydedileceği CSV dosyası.
@@ -42,10 +43,12 @@ def extract_features(folder_path, output_csv, num_features=10):
     X = df.iloc[:, :-1].values  # Özellikler
     y = df['user'].values       # Etiketler
 
-    # Mutual Information kullanarak en önemli özellikleri seç
+    # Recursive Feature Elimination (RFE) kullanarak en önemli özellikleri seç
     try:
-        mi_scores = mutual_info_classif(X, y)
-        top_indices = np.argsort(mi_scores)[-num_features:]  # En yüksek MI değerine sahip özellikleri seç
+        estimator = RandomForestClassifier(random_state=42)
+        selector = RFE(estimator, n_features_to_select=num_features)
+        selector = selector.fit(X, y)
+        top_indices = np.where(selector.support_)[0]  # Seçilen özelliklerin indeksleri
         selected_columns = [columns[i] for i in top_indices] + ['user']
     except Exception as e:
         print(f"Özellik seçimi sırasında hata oluştu: {e}")
