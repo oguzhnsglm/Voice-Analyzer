@@ -121,7 +121,7 @@ class AudioRecorder:
             self.model_trained = True
             self.train_button.config(text="Model Eğitildi", state=tk.DISABLED)
             self.unlock_buttons()
-            messagebox.showinfo("Başarılı", "Model başarıyla eğitildi ve yüklendi!")
+            messagebox.showinfo("Basarili", "Model başarıyla eğitildi ve yüklendi!")
 
         threading.Thread(target=train_and_check).start()
 
@@ -161,7 +161,7 @@ class AudioRecorder:
 
     def save_to_data_folder(self, user_name):
         """
-        Kaydı belirli bir klasöre kaydeder.
+        Kaydı belirli bir klasore kaydeder.
         
         Parameters:
         - user_name (str): Kullanıcının belirttiği isim.
@@ -222,10 +222,9 @@ class AudioRecorder:
                 self.process_button.config(state=tk.DISABLED)  # İşleme butonu devre dışı bırakılır
 
                 # Kullanıcıya bilgi mesajı göster
-                messagebox.showinfo("Başarılı", f"Kayıt '{file_name}' olarak kaydedildi ve veri klasörüne taşındı!")
+                messagebox.showinfo("Basarili", f"Kayıt '{file_name}' olarak kaydedildi ve veri klasörüne taşındı!")
             except Exception as e:
                 messagebox.showerror("Hata", f"Kayıt kaydedilirken hata oluştu: {e}")
-
 
 
     def reset_application(self):
