@@ -17,7 +17,7 @@ from topic_analysis import analyze_text_topic
 from speech_to_text import transcribe_audio
 from AudioMl4 import process_data_and_train, predict_user
 from sentiment_analysis import combined_sentiment_analysis
-
+from AudioMl4 import predict_user
 
 class AudioRecorder:
     def __init__(self, root):
@@ -25,6 +25,8 @@ class AudioRecorder:
         self.root.title("Speaker Recognition and Sentiment Analysis")
         self.is_recording = False
         self.frames = []
+        self.max_duration = 60  # Maksimum süre 600 saniye (10 dakika)
+        self.start_time = None  # Kayıt başlangıç zamanı
 
         entry_frame = tk.Frame(root)
         entry_frame.pack(padx=10, pady=10)
@@ -131,6 +133,7 @@ class AudioRecorder:
             self.frames = []
             self.stream = sd.InputStream(callback=self.callback, channels=1, samplerate=self.saniye_basina_ornek)
             self.stream.start()
+            self.start_time = time.time()  # Kayıt başlangıç zamanı
             self.start_button.config(state=tk.DISABLED)
             self.stop_button.config(state=tk.NORMAL)
             self.train_button.config(state=tk.DISABLED)
@@ -140,6 +143,7 @@ class AudioRecorder:
         if self.is_recording:
             self.is_recording = False
             self.stream.stop()
+            self.start_time = None  # Başlangıç zamanı sıfırlanır
             self.start_button.config(state=tk.DISABLED)
             self.stop_button.config(state=tk.DISABLED)
             self.save_button.config(state=tk.NORMAL)
@@ -189,11 +193,23 @@ class AudioRecorder:
     def update_ui(self):
         if self.is_recording:
             try:
+                # Süre kontrolü
+                current_duration = time.time() - self.start_time  # Geçen süreyi hesapla
+                if current_duration >= self.max_duration:
+                    self.stop_recording()  # Kayıt durdur
+                    messagebox.showinfo("Bilgilendirme", f"Maksimum kayıt süresi ({self.max_duration} saniye) aşıldı. Kayıt durduruldu.")
+                    return  # Fonksiyondan çık
+
+                # Ses sinyali ve histogram çizimini güncelle
                 self.plot_signal()
                 self.plot_histogram()
+
+                # UI'yi periyodik olarak güncelle
                 self.root.after(100, self.update_ui)
+
             except Exception as e:
                 print(f"UI güncellenirken hata: {e}")
+
 
 
     def save_recording(self):
@@ -251,7 +267,7 @@ class AudioRecorder:
                 return
             kelime=transcribe_audio(file)
             if kelime is None:
-                messagebox.showerror("Hata", "Kayıt işlenirken hata oluştu!")
+                messagebox.showwarning("Hata", "Herhangi bir kelime algılanamadı")
                 self.reset_application()
             else:    
                 # Kayıt dosyasını işleyin
@@ -282,18 +298,27 @@ class AudioRecorder:
         return transcript, kelime_sayisi
 
     def speaker_identification(self, file):
-        y, sr = librosa.load(file, sr=self.saniye_basina_ornek)
-        mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=10)
-        mfcc = np.mean(mfcc.T, axis=0)
+        """
+        Verilen ses dosyasını kullanıcıya tahmin eder.
 
-        model = load_model(self.model_path)
-        label_encoder = joblib.load(self.label_encoder_path)
+        Args:
+            file (str): Tahmin yapılacak ses dosyasının yolu.
 
-        prediction = model.predict(mfcc.reshape(1, -1))
-        tahmin_indeksi = np.argmax(prediction, axis=1)
-        tahmin_isim = label_encoder.inverse_transform(tahmin_indeksi)
+        Returns:
+            str: Tahmin edilen kullanıcı adı.
+        """
+        try:
+            # Gerekli yollar
+            model_path = self.model_path
+            label_encoder_path = 'label_encoder.pkl'
+            selector_path = 'feature_selector.pkl'
 
-        return tahmin_isim[0]
+            # Özellik çıkarımı ve tahmin
+            tahmin_isim = predict_user(file, model_path, label_encoder_path, selector_path)
+            return tahmin_isim
+        except Exception as e:
+            print(f"Kullanıcı tahmini sırasında hata oluştu: {e}")
+            return "Bilinmeyen Kullanıcı"
 
     def perform_sentiment_analysis(self, text, audio_file_path):
         sentiment_results = combined_sentiment_analysis(text, audio_file_path)

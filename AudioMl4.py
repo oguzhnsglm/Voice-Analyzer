@@ -55,23 +55,39 @@ def process_data_and_train(folder_path, csv_path):
     joblib.dump(label_encoder, 'label_encoder.pkl')
     print("Model ve etiketler başarıyla kaydedildi.")
 
-def predict_user(file_path, model_path, label_encoder_path):
+def predict_user(file_path, model_path, label_encoder_path, selector_path):
     """
     Verilen ses dosyasını tahmin eder.
+
+    Args:
+        file_path (str): Tahmin yapılacak ses dosyasının yolu.
+        model_path (str): Eğitimli modelin yolu.
+        label_encoder_path (str): Label encoder nesnesinin yolu.
+        selector_path (str): Seçici nesnesinin (SelectKBest) yolu.
+
+    Returns:
+        str: Tahmin edilen kullanıcı adı.
     """
     # Özellik çıkarımı
     audio, sr = librosa.load(file_path, sr=None)
-    mfccs = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=10)
+    mfccs = librosa.feature.mfcc(y=audio, sr=sr, n_mfcc=50)  # 50 MFCC çıkarımı
     features = np.mean(mfccs.T, axis=0).reshape(1, -1)
+
+    # Seçici yükleme ve özellik seçimi
+    selector = joblib.load(selector_path)
+    features_selected = selector.transform(features)
 
     # Model ve etiket yükleme
     model = load_model(model_path)
     label_encoder = joblib.load(label_encoder_path)
 
     # Tahmin
-    prediction = model.predict(features)
+    prediction = model.predict(features_selected)
+    print(prediction)
     predicted_user = label_encoder.inverse_transform([np.argmax(prediction)])
+
     print(f"Tahmin Edilen Kullanıcı: {predicted_user[0]}")
+    return predicted_user[0]
 
 if __name__ == "__main__":
     folder_path = 'converted_wav'  # Ses dosyalarının bulunduğu klasör
@@ -84,4 +100,6 @@ if __name__ == "__main__":
     file_path = 'kayit.wav'  # Tahmin yapılacak ses dosyası
     model_path = 'speaker_recognition_model.h5'
     label_encoder_path = 'label_encoder.pkl'
-    predict_user(file_path, model_path, label_encoder_path)
+    selector_path = 'feature_selector.pkl'  # Seçici nesnesinin yolu
+
+    predicted_user = predict_user(file_path, model_path, label_encoder_path, selector_path)

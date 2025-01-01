@@ -16,8 +16,9 @@ class Test(unittest.TestCase):
         self.assertEqual(transcript, expected_transcript, "Transkript eşleşmiyor!")
 
     def test_transcribe_audio_word_count(self):
-        expected_word_count = 5  # Beklenen kelime sayısı: "Merhaba dünya"
-        transcript = "Harika bir kitap olduğunu söyledi"
+        expected_word_count = 2  # Beklenen kelime sayısı: "Merhaba dünya"
+        audio_file_path = "tests/sample_audio.wav"  # Test ses dosyasının yolu
+        transcript = transcribe_audio(audio_file_path) 
         word_count = len(transcript.split())
         self.assertEqual(word_count, expected_word_count, "Kelime sayısı eşleşmiyor!")
 

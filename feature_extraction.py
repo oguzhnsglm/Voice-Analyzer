@@ -2,12 +2,13 @@ import os
 import numpy as np
 import pandas as pd
 import librosa
-from sklearn.feature_selection import mutual_info_classif
+from sklearn.feature_selection import SelectKBest, f_classif
+import joblib
 
-def extract_features(folder_path, output_csv, num_features=10):
+def extract_features(folder_path, output_csv, num_features=20):
     """
     Özellikleri çıkarır, seçer ve sonuçları CSV dosyasına kaydeder.
-    
+
     Args:
         folder_path (str): Ses dosyalarının bulunduğu klasör.
         output_csv (str): Özelliklerin kaydedileceği CSV dosyası.
@@ -42,21 +43,33 @@ def extract_features(folder_path, output_csv, num_features=10):
     X = df.iloc[:, :-1].values  # Özellikler
     y = df['user'].values       # Etiketler
 
-    # Mutual Information kullanarak en önemli özellikleri seç
+    # Label encoding for target variable (y)
+    from sklearn.preprocessing import LabelEncoder
+    label_encoder = LabelEncoder()
+    y_encoded = label_encoder.fit_transform(y)
+
+    # SelectKBest ile en iyi özellikleri seç (ANOVA F-Test)
     try:
-        mi_scores = mutual_info_classif(X, y, random_state=42)
-        top_indices = np.argsort(mi_scores)[-num_features:]  # En yüksek MI değerine sahip özellikleri seç
-        selected_columns = [columns[i] for i in top_indices] + ['user']
+        selector = SelectKBest(score_func=f_classif, k=num_features)
+        X_new = selector.fit_transform(X, y_encoded)
+
+        # Seçilen sütunları al
+        selected_indices = selector.get_support(indices=True)
+        selected_columns = [columns[i] for i in selected_indices] + ['user']
+
+        # Seçilen özelliklere göre DataFrame oluştur
+        reduced_df = pd.DataFrame(X_new, columns=[columns[i] for i in selected_indices])
+        reduced_df['user'] = y
+
+        # SelectKBest nesnesini kaydet
+        joblib.dump(selector, 'feature_selector.pkl')
+        print("SelectKBest nesnesi başarıyla kaydedildi.")
+
+        # Sonucu CSV'ye kaydet
+        reduced_df.to_csv(output_csv, index=False)
+        print(f"Seçilen {num_features} özellik başarıyla {output_csv} dosyasına kaydedildi.")
     except Exception as e:
         print(f"Özellik seçimi sırasında hata oluştu: {e}")
-        return
-
-    # Seçilen özelliklere göre DataFrame'i daralt
-    reduced_df = df[selected_columns]
-
-    # Sonucu CSV'ye kaydet
-    reduced_df.to_csv(output_csv, index=False)
-    print(f"Seçilen {num_features} özellik başarıyla {output_csv} dosyasına kaydedildi.")
 
 if __name__ == "__main__":
     folder_path = 'converted_wav'

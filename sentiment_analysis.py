@@ -1,7 +1,7 @@
 import torch
 import torchaudio
 import numpy as np
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, AutoConfig, pipeline, Wav2Vec2Processor, Wav2Vec2ForSequenceClassification
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, AutoConfig, pipeline, Wav2Vec2Processor, Wav2Vec2ForSequenceClassification, AutoProcessor, AutoModelForAudioClassification
 from torchaudio.transforms import Resample
 from scipy.special import softmax
 from translate_text import translate_to_english  # Çeviri fonksiyonunu import et
@@ -39,66 +39,84 @@ def analyze_text_sentiment(text):
 
     return sentiment_scores
 
-def analyze_audio_sentiment(audio_file_path):
-    """
-    Basit bir ses duygu analizi.
-    Ses enerjisi ve sıfır geçiş oranına dayalı olarak pozitif, nötr ve negatif sonuçları döndürür.
-    """
-    # Ses dosyasını yükle
-    speech_array, sampling_rate = torchaudio.load(audio_file_path)
+# AutoProcessor ve model ile manuel duygu analizi
+def analyze_audio_sentiment(audio_path):
+    """AutoProcessor kullanarak ses dosyasının duygu analizi."""
+    try:
+        # Ses dosyasını yükleme
+        waveform, sample_rate = torchaudio.load(audio_path)
 
-    # Yeniden örnekleme (16000 Hz'e)
-    if sampling_rate != 16000:
-        resample = Resample(orig_freq=sampling_rate, new_freq=16000)
-        speech_array = resample(speech_array)
+        # Yeniden örnekleme (16000 Hz)
+        if sample_rate != 16000:
+            resampler = Resample(orig_freq=sample_rate, new_freq=16000)
+            waveform = resampler(waveform)
 
-    # RMS Enerji
-    rms_energy = torch.sqrt(torch.mean(speech_array ** 2)).item()
+        # İşleme uygun hale getirme
+        inputs = processor(waveform.squeeze().numpy(), sampling_rate=16000, return_tensors="pt")
 
-    # Sıfır Geçiş Oranı
-    zero_crossings = torch.mean((speech_array[0][:-1] * speech_array[0][1:] < 0).float()).item()
+        # Modelden tahmin
+        outputs = model(**inputs)
+        scores = torch.nn.functional.softmax(outputs.logits, dim=-1).detach().numpy()[0]
 
-    # Dinamik skor hesaplama
-    # Pozitif enerji seviyesini artırırken sıfır geçiş oranına dayalı negatiflik tahmini
-    positive_score = rms_energy * 100
-    neutral_score = (1 - abs(zero_crossings - 0.5)) * 50  # Dengeli sıfır geçiş oranı
-    negative_score = (1 - rms_energy + zero_crossings) * 50
+        # Sonuçları etiketlerle eşleştirme
+        labels = model.config.id2label
+        results = {labels[i]: scores[i] for i in range(len(labels))}
+        print(results)
+        return results
 
-    # Normalize ederek yüzdelik değerlere dönüştür
-    total_score = positive_score + neutral_score + negative_score
-    if total_score > 0:
-        sentiment_scores = {
-            "positive": (positive_score / total_score) * 100,
-            "neutral": (neutral_score / total_score) * 100,
-            "negative": (negative_score / total_score) * 100,
-        }
-    else:
-        sentiment_scores = {"positive": 0, "neutral": 0, "negative": 0}
+    except Exception as e:
+        print(f"Ses duygu analizi sırasında hata oluştu: {e}")
+        return {"positive": 0, "neutral": 0, "negative": 0}
 
-    return sentiment_scores
 
 def combined_sentiment_analysis(text, audio_file_path):
     """
     Metin ve ses dosyasının duygu analizlerini yapar ve sonuçların ortalamasını alır.
+    Ses analizindeki `arousal`, `dominance`, `valence` değerlerini, 
+    metin analizindeki `positive`, `neutral` ve `negative` duygularla eşleştirir.
+    
+    Returns:
+        dict: {'text_scores': dict, 'audio_scores': dict, 'combined_scores': dict}
     """
     # Metin analizi
     text_scores = analyze_text_sentiment(text)
-    
+
     # Ses analizi
     audio_scores = analyze_audio_sentiment(audio_file_path)
-    
-    # Ortalamalarını alarak birleşik duygu analizi oluştur
+
+    # Ses analizindeki değerleri normalize ederek yüzdelik hale getir
+    positive_audio = audio_scores['valence'] * 100
+    neutral_audio = audio_scores['dominance'] * 100
+    negative_audio = audio_scores['arousal'] * 100
+
+    # Ses analizini metin analizine bağlamak için ağırlıklar belirle
+    audio_weight = 0.4  # Ses analizinin ağırlığı
+    text_weight = 0.6   # Metin analizinin ağırlığı
+
+    # Birleşik skorları hesapla
     combined_scores = {
-        'positive': (text_scores['positive'] + audio_scores.get('positive', 0)) / 2,
-        'neutral': (text_scores['neutral'] + audio_scores.get('neutral', 0)) / 2,
-        'negative': (text_scores['negative'] + audio_scores.get('negative', 0)) / 2,
+        'positive': (positive_audio * audio_weight) + (text_scores['positive'] * text_weight),
+        'neutral': (neutral_audio * audio_weight) + (text_scores['neutral'] * text_weight),
+        'negative': (negative_audio * audio_weight) + (text_scores['negative'] * text_weight),
     }
-    return {'text_scores': text_scores, 'audio_scores': audio_scores, 'combined_scores': combined_scores}
+
+    return {
+        'text_scores': text_scores,
+        'audio_scores': {
+            'arousal': audio_scores['arousal'],
+            'dominance': audio_scores['dominance'],
+            'valence': audio_scores['valence'],
+            'positive': positive_audio,
+            'neutral': neutral_audio,
+            'negative': negative_audio
+        },
+        'combined_scores': combined_scores
+    }
 
 if __name__ == "__main__":
     sample_text = "Bugün harika hissediyorum!"  # Kullanıcı tarafından girilen metin
     audio_path = "kayit.wav"  # Ses dosyanızın yolu
-    
+
     result = combined_sentiment_analysis(sample_text, audio_path)
     if result:
-        print("Duygu Analizi Sonucu:", result) 
+        print("Duygu Analizi Sonucu:", result)
